@@ -21,7 +21,8 @@ import numpy as np
 import tensorflow.compat.v1 as tf
 
 from diffusion_tf import utils
-from diffusion_tf.diffusion_utils_2 import get_beta_schedule, GaussianDiffusion2
+from diffusion_tf.diffusion_utils import get_beta_schedule, GaussianDiffusion
+from diffusion_tf.diffusion_utils_2 import GaussianDiffusion2
 from diffusion_tf.models import unet
 from diffusion_tf.tpu_utils import tpu_utils, datasets, simple_eval_worker
 
@@ -30,7 +31,8 @@ class Model(tpu_utils.Model):
   def __init__(self, *, model_name, betas: np.ndarray, loss_type: str, num_classes: int,
                dropout: float, randflip, block_size: int):
     self.model_name = model_name
-    self.diffusion = GaussianDiffusion2(betas=betas, loss_type=loss_type, model_var_type='fixedsmall', model_mean_type='eps')
+    #self.diffusion = GaussianDiffusion(betas=betas, loss_type=loss_type, model_var_type='fixedsmall', model_mean_type='eps')
+    self.diffusion = GaussianDiffusion(betas=betas, loss_type=loss_type)
     self.num_classes = num_classes
     self.dropout = dropout
     self.randflip = randflip

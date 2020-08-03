@@ -202,7 +202,7 @@ class TForkDataset:
         tf.contrib.data.map_and_batch(
           dataset_parser_static,
           batch_size=params["batch_size"],
-          num_parallel_batches=TForkDataset._get_num_cores(self,params),
+          num_parallel_batches=TForkDataset._get_num_cores(params),
           drop_remainder=True))
       # prefetch the dataset.
       dset = dset.prefetch(tf.data.experimental.AUTOTUNE)
