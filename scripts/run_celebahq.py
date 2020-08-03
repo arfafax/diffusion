@@ -58,10 +58,10 @@ class Model(tpu_utils.Model):
       x = tf.image.random_flip_left_right(x)
       assert x.shape == [B, H, W, C]
     t = tf.random_uniform([B], 0, self.diffusion.num_timesteps, dtype=tf.int32)
-    losses = self.diffusion.p_losses(
+    losses, noisy, fakes = self.diffusion.p_losses(
       denoise_fn=functools.partial(self._denoise, y=y, dropout=self.dropout), x_start=x, t=t)
     assert losses.shape == t.shape == [B]
-    return {'loss': tf.reduce_mean(losses)}
+    return {'loss': tf.reduce_mean(losses), 'generated': fakes, 'generated_noisy': noisy}
 
   def samples_fn(self, dummy_noise, y):
     return {

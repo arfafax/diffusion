@@ -104,22 +104,23 @@ def run_training(
     tpu=None, zone=None, project=None,
     log_dir, exp_name, dump_kwargs=None,
     date_str=None, iterations_per_loop=1000, keep_checkpoint_max=2, max_steps=int(1e10),
-    warm_start_from=None
+    warm_start_from=None,
+    experimental_host_call_every_n_steps=50,
 ):
   tf.logging.set_verbosity(tf.logging.INFO)
 
   # Create checkpoint directory
   model_dir = os.path.join(
     log_dir,
-    datetime.now().strftime('%Y-%m-%d') if date_str is None else date_str,
+    #datetime.now().strftime('%Y-%m-%d') if date_str is None else date_str,
     exp_name
   )
   print('model dir:', model_dir)
   if tf.io.gfile.exists(model_dir):
     print('model dir already exists: {}'.format(model_dir))
-    if input('continue training? [y/n] ') != 'y':
-      print('aborting')
-      return
+    # if input('continue training? [y/n] ') != 'y':
+    #   print('aborting')
+    #   return
 
   # Save kwargs in json format
   if dump_kwargs is not None:
@@ -147,8 +148,11 @@ def run_training(
     assert isinstance(model, Model)
 
     # training loss
-    train_info_dict = model.train_fn(normalize_data(tf.cast(features['image'], tf.float32)), features['label'])
+    reals = normalize_data(tf.cast(features['image'], tf.float32))
+    train_info_dict = model.train_fn(reals, features['label'])
     loss = train_info_dict['loss']
+    fakes = train_info_dict['generated']
+    fakes_noisy = train_info_dict['generated_noisy']
     assert loss.shape == []
 
     # train op
@@ -177,6 +181,9 @@ def run_training(
     tpu_summary.scalar('train/gnorm', gnorm)
     tpu_summary.scalar('train/pnorm', utils.rms(trainable_variables))
     tpu_summary.scalar('train/lr', warmed_up_lr)
+    tpu_summary.image('real_images', reals, reduce_fn=lambda x: x[0:9])
+    tpu_summary.image('fake_images', fakes, reduce_fn=lambda x: x[0:9])
+    #tpu_summary.image('fake_images_noisy', fakes_noisy, reduce_fn=lambda x: x[0:9])
     return tf.estimator.tpu.TPUEstimatorSpec(
       mode=mode, host_call=tpu_summary.get_host_call(), loss=loss, train_op=train_op)
 
@@ -194,10 +201,11 @@ def run_training(
       tpu_config=tf.estimator.tpu.TPUConfig(
         iterations_per_loop=iterations_per_loop,
         num_shards=None,
-        per_host_input_for_training=tf.estimator.tpu.InputPipelineConfig.PER_HOST_V2
+        per_host_input_for_training=tf.estimator.tpu.InputPipelineConfig.PER_HOST_V2,
+        experimental_host_call_every_n_steps=experimental_host_call_every_n_steps,
       ),
       save_checkpoints_secs=1600,  # 30 minutes
-      keep_checkpoint_max=keep_checkpoint_max
+      keep_checkpoint_max=keep_checkpoint_max,
     ),
     warm_start_from=warm_start_from
   )

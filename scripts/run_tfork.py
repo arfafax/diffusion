@@ -67,10 +67,10 @@ class Model(tpu_utils.Model):
       x = tf.image.random_flip_left_right(x)
       assert x.shape == [B, H, W, C]
     t = tf.random_uniform([B], 0, self.diffusion.num_timesteps, dtype=tf.int32)
-    losses = self.diffusion.p_losses(
+    losses, noisy, fakes = self.diffusion.p_losses(
       denoise_fn=functools.partial(self._denoise, y=y, dropout=self.dropout), x_start=x, t=t)
     assert losses.shape == t.shape == [B]
-    return {'loss': tf.reduce_mean(losses)}
+    return {'loss': tf.reduce_mean(losses), 'generated': fakes, 'generated_noisy': noisy}
 
   def samples_fn(self, dummy_noise, y):
     return {
@@ -161,9 +161,9 @@ def train(
   kwargs = dict(locals())
   ds = datasets.get_dataset(dataset, tfr_file=tfr_file)
   tpu_utils.run_training(
-    date_str='9999-99-99',
-    exp_name='{exp_name}_{dataset}_{model_name}_{optimizer}_bs{total_bs}_lr{lr}w{warmup}_beta{beta_start}-{beta_end}-{beta_schedule}_t{num_diffusion_timesteps}_{loss_type}_dropout{dropout}_randflip{randflip}_blk{block_size}'.format(
-      **kwargs),
+    date_str='9999-99-99', # datetime.datetime.now().strftime("%Y-%m-%d"),
+    #exp_name='{exp_name}_{dataset}_{model_name}_{optimizer}_bs{total_bs}_lr{lr}w{warmup}_beta{beta_start}-{beta_end}-{beta_schedule}_t{num_diffusion_timesteps}_{loss_type}_dropout{dropout}_randflip{randflip}_blk{block_size}'.format(**kwargs),
+    exp_name=exp_name,
     model_constructor=lambda: Model(
       model_name=model_name,
       betas=get_beta_schedule(

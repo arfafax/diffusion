@@ -160,7 +160,7 @@ class GaussianDiffusion:
       raise NotImplementedError(self.loss_type)
 
     assert losses.shape == [B]
-    return losses
+    return losses, x_noisy, x_recon
 
   def p_mean_variance(self, denoise_fn, *, x, t, clip_denoised: bool):
     if self.loss_type == 'noisepred':
