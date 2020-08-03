@@ -216,7 +216,7 @@ class TForkDataset:
   @staticmethod
   def _make_dataset(self, data_dirs, index=0, num_hosts=1,
                    seed=0, shuffle_filenames=True,
-                   num_parallel_calls = 64, batch_size = 1):
+                   num_parallel_calls = 64, batch_size = 32):
 
     if shuffle_filenames:
       assert seed is not None
