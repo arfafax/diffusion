@@ -224,8 +224,10 @@ class TForkDataset:
      return params['context'].num_hosts
     elif 'dataset_index' in params:
       return params['dataset_num_shards']
-    else:
+    elif 'num_hosts' in params:
       return params['num_hosts']
+    else:
+      return 1
 
   @staticmethod
   def _get_num_cores(params):

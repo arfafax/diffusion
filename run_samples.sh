@@ -1,0 +1,2 @@
+TPU_NAME=tpu-v3-8-euw4a-202
+PYTHONPATH=. python3 scripts/run_tfork_samples.py simple_eval --mode progressive_samples --tpu_name $TPU_NAME --load_ckpt model.ckpt-15000 --model_dir gs://dota-euw4a/runs/diffrun101 --samples_dir gs://tensorfork-arfa-euw4/ddpm-samples/diffrun101-15000/ --bucket_name_prefix dota-euw4a --tfr_file datasets/octo2k/octo2k-0* --dump_samples_only True --once True --num_hosts 1

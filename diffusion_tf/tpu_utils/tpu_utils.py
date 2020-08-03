@@ -182,7 +182,8 @@ def run_training(
     tpu_summary.scalar('train/pnorm', utils.rms(trainable_variables))
     tpu_summary.scalar('train/lr', warmed_up_lr)
     tpu_summary.image('real_images', reals, reduce_fn=lambda x: x[0:9])
-    tpu_summary.image('fake_images', fakes, reduce_fn=lambda x: x[0:9])
+    tpu_summary.image('fake_images', tf.clip_by_value(fakes, -1.0, 1.0), reduce_fn=lambda x: x[0:9])
+
     #tpu_summary.image('fake_images_noisy', fakes_noisy, reduce_fn=lambda x: x[0:9])
     return tf.estimator.tpu.TPUEstimatorSpec(
       mode=mode, host_call=tpu_summary.get_host_call(), loss=loss, train_op=train_op)
@@ -412,7 +413,7 @@ class EvalWorker:
       log.scalar('{}/{}'.format(prefix, k), v, step=curr_step)
     log.flush()
 
-  def _dump_samples(self, sess, curr_step, samples_dir, ema: bool, num_samples=50000):
+  def _dump_samples(self, sess, curr_step, samples_dir, ema: bool, num_samples=256):
     print('will dump samples to', samples_dir)
     if not tf.gfile.IsDirectory(samples_dir):
       tf.gfile.MakeDirs(samples_dir)

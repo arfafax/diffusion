@@ -44,7 +44,8 @@ class SimpleEvalWorker:
       self.train_ds_iterator = _make_ds_iterator(
         self.strategy, dataset.train_one_pass_input_fn(params={'batch_size': total_bs}))
       self.eval_ds_iterator = _make_ds_iterator(
-        self.strategy, dataset.eval_input_fn(params={'batch_size': total_bs}))
+        self.strategy, dataset.train_one_pass_input_fn(params={'batch_size': total_bs}))
+        #self.strategy, dataset.eval_input_fn(params={'batch_size': total_bs}))
 
       img_batch_shape = self.train_ds_iterator.output_shapes['image'].as_list()
       assert img_batch_shape[0] == self.local_bs
@@ -67,8 +68,8 @@ class SimpleEvalWorker:
         print('===== EMA SAMPLES =====')
         self.ema_samples_outputs = self._make_progressive_sampling_graph(img_shape=img_batch_shape[1:])
         print('===== EMA BPD =====')
-        self.bpd_train = self._make_bpd_graph(self.train_ds_iterator)
-        self.bpd_eval = self._make_bpd_graph(self.eval_ds_iterator)
+        #self.bpd_train = self._make_bpd_graph(self.train_ds_iterator)
+        #self.bpd_eval = self._make_bpd_graph(self.eval_ds_iterator)
 
   def _make_progressive_sampling_graph(self, img_shape):
     return distributed(
@@ -85,7 +86,7 @@ class SimpleEvalWorker:
   def init_all_iterators(self, sess):
     sess.run([self.train_ds_iterator.initializer, self.eval_ds_iterator.initializer])
 
-  def dump_progressive_samples(self, sess, curr_step, samples_dir, ema: bool, num_samples=50000, batches_per_flush=20):
+  def dump_progressive_samples(self, sess, curr_step, samples_dir, ema: bool, num_samples=16, batches_per_flush=20):
     if not tf.gfile.IsDirectory(samples_dir):
       tf.gfile.MakeDirs(samples_dir)
 
@@ -158,7 +159,7 @@ class SimpleEvalWorker:
       f.write(pickle.dumps(concatenated, protocol=pickle.HIGHEST_PROTOCOL))
     print('done writing results')
 
-  def run(self, mode: str, logdir: str, load_ckpt: str):
+  def run(self, mode: str, logdir: str, load_ckpt: str, samples_dir: str):
     """
     Main entry point.
 
@@ -172,7 +173,7 @@ class SimpleEvalWorker:
     assert tf.io.gfile.exists(ckpt + '.index')
 
     # Output dir
-    output_dir = os.path.join(logdir, 'simple_eval')
+    output_dir = samples_dir#os.path.join(logdir, 'simple_eval')
     print('Writing output to: {}'.format(output_dir))
 
     # Make the session
@@ -200,6 +201,7 @@ class SimpleEvalWorker:
           train=mode == 'bpd_train')
       elif mode == 'progressive_samples':
         return self.dump_progressive_samples(
-          sess, curr_step=global_step_val, samples_dir=os.path.join(output_dir, 'progressive_samples'), ema=True)
+          #sess, curr_step=global_step_val, samples_dir=os.path.join(output_dir, 'progressive_samples'), ema=True)
+          sess, curr_step=global_step_val, samples_dir=samples_dir, ema=True)
       else:
         raise NotImplementedError(mode)
