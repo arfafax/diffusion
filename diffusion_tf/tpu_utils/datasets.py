@@ -187,8 +187,8 @@ class TForkDataset:
   def _train_input_fn(self, params, one_pass: bool):
       dset = self._make_dataset(
         data_dirs=self.tfr_file,
-        index=TForkDataset._get_current_host(self,params),
-        num_hosts=TForkDataset._get_num_hosts(self,params),
+        index=TForkDataset._get_current_host(params),
+        num_hosts=TForkDataset._get_num_hosts(params),
         buffer_mb=self.buffer_mb,
       )
 
@@ -209,7 +209,7 @@ class TForkDataset:
       return dset
 
   @staticmethod
-  def _get_current_host(self, params):
+  def _get_current_host(params):
     # TODO(dehao): Replace the following with params['context'].current_host
     if 'context' in params:
       return params['context'].current_input_fn_deployment()[1]
@@ -219,7 +219,7 @@ class TForkDataset:
       return 0
 
   @staticmethod
-  def _get_num_hosts(self, params):
+  def _get_num_hosts(params):
     if 'context' in params:
      return params['context'].num_hosts
     elif 'dataset_index' in params:
@@ -228,8 +228,8 @@ class TForkDataset:
       return params['num_hosts']
 
   @staticmethod
-  def _get_num_cores(self, params):
-    return 8 * self._get_num_hosts(self, params)
+  def _get_num_cores(params):
+    return 8 * TForkDataset._get_num_hosts(params)
 
 
 
