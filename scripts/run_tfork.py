@@ -21,16 +21,16 @@ import numpy as np
 import tensorflow.compat.v1 as tf
 
 from diffusion_tf import utils
-from diffusion_tf.diffusion_utils import get_beta_schedule, GaussianDiffusion
+from diffusion_tf.diffusion_utils_2 import get_beta_schedule, GaussianDiffusion2
 from diffusion_tf.models import unet
-from diffusion_tf.tpu_utils import tpu_utils, datasets
+from diffusion_tf.tpu_utils import tpu_utils, datasets, simple_eval_worker
 
 
 class Model(tpu_utils.Model):
   def __init__(self, *, model_name, betas: np.ndarray, loss_type: str, num_classes: int,
                dropout: float, randflip, block_size: int):
     self.model_name = model_name
-    self.diffusion = GaussianDiffusion(betas=betas, loss_type=loss_type)
+    self.diffusion = GaussianDiffusion2(betas=betas, loss_type=loss_type, model_var_type='fixedsmall', model_mean_type='eps')
     self.num_classes = num_classes
     self.dropout = dropout
     self.randflip = randflip
@@ -80,7 +80,39 @@ class Model(tpu_utils.Model):
         noise_fn=tf.random_normal
       )
     }
+  def progressive_samples_fn(self, dummy_noise, y):
+    samples, progressive_samples = self.diffusion.p_sample_loop_progressive(
+      denoise_fn=functools.partial(self._denoise, y=y, dropout=0),
+      shape=dummy_noise.shape.as_list(),
+      noise_fn=tf.random_normal
+    )
+    return {'samples': samples, 'progressive_samples': progressive_samples}
 
+def _load_model(kwargs, ds):
+  return Model(
+    model_name=kwargs['model_name'],
+    betas=get_beta_schedule(
+      kwargs['beta_schedule'], beta_start=kwargs['beta_start'], beta_end=kwargs['beta_end'],
+      num_diffusion_timesteps=kwargs['num_diffusion_timesteps']
+    ),
+    #model_mean_type='eps',#kwargs['model_mean_type'],
+    #model_var_type='learned',#kwargs['model_var_type'],
+    loss_type=kwargs['loss_type'],
+    num_classes=ds.num_classes,
+    dropout=kwargs['dropout'],
+    block_size=kwargs['block_size'],
+    randflip=kwargs['randflip']
+  )
+def simple_eval(model_dir, tpu_name, bucket_name_prefix, mode, load_ckpt=None, total_bs=16, tfr_file='tensorflow_datasets/lsun/church-r08.tfrecords'):
+  #region = utils.get_gcp_region()
+  tfr_file = 'gs://{}/{}'.format(bucket_name_prefix, tfr_file)
+  kwargs = tpu_utils.load_train_kwargs(model_dir)
+  print('loaded kwargs:', kwargs)
+  ds = datasets.get_dataset(kwargs['dataset'], tfr_file=tfr_file)
+  worker = simple_eval_worker.SimpleEvalWorker(
+    tpu_name=tpu_name, model_constructor=functools.partial(_load_model, kwargs=kwargs, ds=ds),
+    total_bs=total_bs, dataset=ds)
+  worker.run(mode=mode, logdir=model_dir, load_ckpt=load_ckpt)
 
 def evaluation(
     model_dir, tpu_name, bucket_name_prefix, once=False, dump_samples_only=False, total_bs=128,
@@ -155,3 +187,4 @@ def train(
 
 if __name__ == '__main__':
   fire.Fire()
+
