@@ -86,7 +86,7 @@ class SimpleEvalWorker:
   def init_all_iterators(self, sess):
     sess.run([self.train_ds_iterator.initializer, self.eval_ds_iterator.initializer])
 
-  def dump_progressive_samples(self, sess, curr_step, samples_dir, ema: bool, num_samples=16, batches_per_flush=20):
+  def dump_progressive_samples(self, sess, curr_step, samples_dir, ema: bool, num_samples=64, batches_per_flush=20):
     if not tf.gfile.IsDirectory(samples_dir):
       tf.gfile.MakeDirs(samples_dir)
 

@@ -193,7 +193,7 @@ class TForkDataset:
       )
 
       # cache the unparsed image data.
-      dset = dset.cache()
+      #dset = dset.cache()
       # fused shuffle and repeat.
       dset = dset.apply(tf.contrib.data.shuffle_and_repeat(1024 * 16))
       # parse the image data.
