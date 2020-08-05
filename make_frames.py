@@ -8,6 +8,9 @@ samples = pickle.load( open( files[0], "rb" ) )
 
 from PIL import Image
 import numpy as np
+
+print(len(samples['progressive_samples']))
+print(len(samples['progressive_samples'][0]))
 for index,frames in enumerate(samples['progressive_samples']):
     for frame,sample in enumerate(frames):
         samp = np.clip(sample, -1, 1)
@@ -16,5 +19,5 @@ for index,frames in enumerate(samples['progressive_samples']):
 
         img = Image.fromarray(np.clip(formatted,0,255))
         #display(img)
-        img.save("frames/foo-{:02d}.png".format(index*20+frame))
+        img.save("frames/foo-{:04d}.png".format(index*len(samples['progressive_samples'][0])+frame))
 

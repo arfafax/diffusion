@@ -200,8 +200,11 @@ class SimpleEvalWorker:
           sess, curr_step=global_step_val, output_dir=os.path.join(output_dir, 'bpd'), ema=True,
           train=mode == 'bpd_train')
       elif mode == 'progressive_samples':
+        num_samples = 64
+        if 'NUM_SAMPLES' in os.environ:
+            num_samples = int(os.environ['NUM_SAMPLES'])
         return self.dump_progressive_samples(
           #sess, curr_step=global_step_val, samples_dir=os.path.join(output_dir, 'progressive_samples'), ema=True)
-          sess, curr_step=global_step_val, samples_dir=samples_dir, ema=True)
+          sess, curr_step=global_step_val, samples_dir=samples_dir, ema=True, num_samples=num_samples)
       else:
         raise NotImplementedError(mode)

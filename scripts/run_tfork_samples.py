@@ -26,12 +26,15 @@ from diffusion_tf.diffusion_utils_2 import GaussianDiffusion2
 from diffusion_tf.models import unet
 from diffusion_tf.tpu_utils import tpu_utils, datasets, simple_eval_worker
 
+import os
+
 
 class Model(tpu_utils.Model):
   def __init__(self, *, model_name, betas: np.ndarray, loss_type: str, num_classes: int,
                dropout: float, randflip, block_size: int):
     self.model_name = model_name
     self.diffusion = GaussianDiffusion2(betas=betas, loss_type=loss_type, model_var_type='fixedsmall', model_mean_type='eps')
+    #self.diffusion = GaussianDiffusion2(betas=betas, loss_type=loss_type, model_var_type='fixedlarge', model_mean_type='xstart')
     #self.diffusion = GaussianDiffusion(betas=betas, loss_type=loss_type)
     self.num_classes = num_classes
     self.dropout = dropout
@@ -109,6 +112,11 @@ def simple_eval(model_dir, tpu_name, bucket_name_prefix, mode, load_ckpt=None, t
   #region = utils.get_gcp_region()
   tfr_file = 'gs://{}/{}'.format(bucket_name_prefix, tfr_file)
   kwargs = tpu_utils.load_train_kwargs(model_dir)
+  if 'NUM_DIFFUSION_TIMESTEPS' in os.environ:
+      kwargs['num_diffusion_timesteps'] = int(os.environ['NUM_DIFFUSION_TIMESTEPS'])
+  if 'BETA_SCHEDULE' in os.environ:
+      kwargs['beta_schedule'] = os.environ['BETA_SCHEDULE']
+
   print('loaded kwargs:', kwargs)
   ds = datasets.get_dataset(kwargs['dataset'], tfr_file=tfr_file)
   worker = simple_eval_worker.SimpleEvalWorker(
