@@ -58,6 +58,10 @@ class SimpleEvalWorker:
       print('===== SAMPLES =====')
       self.samples_outputs = self._make_progressive_sampling_graph(img_shape=img_batch_shape[1:])
 
+      print('===== INTERPS =====')
+      self.interp_outputs = self._make_interp_sampling_graph(img_shape=img_batch_shape[1:], ds_iterator=self.eval_ds_iterator)
+
+
       # Model with EMA parameters
       print('===== EMA =====')
       self.global_step = tf.train.get_or_create_global_step()
@@ -67,6 +71,8 @@ class SimpleEvalWorker:
       with utils.ema_scope(ema):
         print('===== EMA SAMPLES =====')
         self.ema_samples_outputs = self._make_progressive_sampling_graph(img_shape=img_batch_shape[1:])
+        print('===== EMA INTERPS =====')
+        self.ema_interp_outputs = self._make_interp_sampling_graph(img_shape=img_batch_shape[1:], ds_iterator=self.eval_ds_iterator)
         print('===== EMA BPD =====')
         #self.bpd_train = self._make_bpd_graph(self.train_ds_iterator)
         #self.bpd_eval = self._make_bpd_graph(self.eval_ds_iterator)
@@ -78,6 +84,36 @@ class SimpleEvalWorker:
       args=(tf.fill([self.local_bs, *img_shape], value=np.nan),),
       reduction='concat', strategy=self.strategy)
 
+  def _make_interp_sampling_graph(self, img_shape, ds_iterator):
+      x1 = tf.io.decode_image(tf.io.read_file('gs://tensorfork-arfa-euw4/octo2k-samples/3.jpg'), channels=3)
+      x2 = tf.io.decode_image(tf.io.read_file('gs://tensorfork-arfa-euw4/octo2k-samples/5.jpg'), channels=3)
+      x1 = tf.cast(x1, tf.float32)/255.0
+      x1 = tf.image.resize_image_with_pad(x1, target_height=256, target_width=256, method=tf.image.ResizeMethod.AREA)
+      x2 = tf.cast(x2, tf.float32)/255.0
+      x2 = tf.image.resize_image_with_pad(x2, target_height=256, target_width=256, method=tf.image.ResizeMethod.AREA)
+
+      x1 = tf.expand_dims(x1, axis=0)
+      x2 = tf.expand_dims(x2, axis=0)
+
+      return self.model.interpolate_fn(
+          tf.fill([self.local_bs, *img_shape], value=np.nan),
+          tf.random_uniform([self.local_bs], 0, self.dataset.num_classes, dtype=tf.int32),
+          x1, x2
+        )
+ 
+  """
+    return distributed(
+      lambda noise_, x1_, x2_: self.model.interpolate_fn(
+          noise_,
+          tf.random_uniform([self.local_bs], 0, self.dataset.num_classes, dtype=tf.int32),
+          normalize_data(tf.cast(x1_['image'], tf.float32)),
+          normalize_data(tf.cast(x2_['image'], tf.float32))
+        ),
+      args=(tf.fill([self.local_bs, *img_shape], value=np.nan),
+          next(ds_iterator),next(ds_iterator),),
+      #args=(tf.fill([self.local_bs, *img_shape], value=np.nan),0,next(ds_iterator), next(ds_iterator)),
+      reduction='concat', strategy=self.strategy)
+"""
   def _make_bpd_graph(self, ds_iterator):
     return distributed(
       lambda x_: self.model.bpd_fn(normalize_data(tf.cast(x_['image'], tf.float32)), x_['label']),
@@ -85,6 +121,42 @@ class SimpleEvalWorker:
 
   def init_all_iterators(self, sess):
     sess.run([self.train_ds_iterator.initializer, self.eval_ds_iterator.initializer])
+
+  def dump_interp_samples(self, sess, curr_step, samples_dir, ema: bool, num_samples=1, batches_per_flush=20):
+    if not tf.gfile.IsDirectory(samples_dir):
+      tf.gfile.MakeDirs(samples_dir)
+
+    batch_cache, num_flushes_so_far = [], 0
+
+    def _write_batch_cache():
+      nonlocal batch_cache, num_flushes_so_far
+      # concat all the batches
+      #assert all(set(b.keys()) == set(self.interp_outputs.keys()) for b in batch_cache)
+      #concatenated = {
+        #"foo": np.concatenate([b.astype(np.float32) for b in batch_cache], axis=0)
+      #}
+      #assert len(set(len(v) for v in concatenated.values())) == 1
+      # write the file
+      filename = os.path.join(
+        samples_dir, 'interp_xstartpred_ema{}_step{:09d}_part{:06d}.pkl'.format(
+          int(ema), curr_step, num_flushes_so_far))
+      assert not tf.io.gfile.exists(filename), 'interp file already exists: {}'.format(filename)
+      print('writing interp batch to:', filename)
+      with tf.io.gfile.GFile(filename, 'wb') as f:
+        f.write(pickle.dumps(batch_cache, protocol=pickle.HIGHEST_PROTOCOL))
+      print('done writing interp batch')
+      num_flushes_so_far += 1
+      batch_cache = []
+
+    num_gen_batches = int(np.ceil(num_samples / self.total_bs))
+    print('generating {} interp ({} batches)...'.format(num_samples, num_gen_batches))
+    self.init_all_iterators(sess)
+    for i_batch in trange(num_gen_batches, desc='sampling'):
+      batch_cache.append(sess.run(self.ema_interp_outputs if ema else self.interp_outputs))
+      if i_batch != 0 and i_batch % batches_per_flush == 0:
+        _write_batch_cache()
+    if batch_cache:
+      _write_batch_cache()
 
   def dump_progressive_samples(self, sess, curr_step, samples_dir, ema: bool, num_samples=64, batches_per_flush=20):
     if not tf.gfile.IsDirectory(samples_dir):
@@ -206,5 +278,13 @@ class SimpleEvalWorker:
         return self.dump_progressive_samples(
           #sess, curr_step=global_step_val, samples_dir=os.path.join(output_dir, 'progressive_samples'), ema=True)
           sess, curr_step=global_step_val, samples_dir=samples_dir, ema=True, num_samples=num_samples)
+      elif mode == 'interp':
+        num_samples = 1
+        #if 'NUM_SAMPLES' in os.environ:
+        #    num_samples = int(os.environ['NUM_SAMPLES'])
+        return self.dump_interp_samples(
+          #sess, curr_step=global_step_val, samples_dir=os.path.join(output_dir, 'progressive_samples'), ema=True)
+          sess, curr_step=global_step_val, samples_dir=samples_dir, ema=True, num_samples=num_samples)
+
       else:
         raise NotImplementedError(mode)

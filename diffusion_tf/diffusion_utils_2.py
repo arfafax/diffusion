@@ -102,12 +102,14 @@ class GaussianDiffusion2:
     """
     Diffuse the data (t == 0 means diffused for 1 step)
     """
+    shape = (1, 256, 256, 3)
     if noise is None:
-      noise = tf.random_normal(shape=x_start.shape)
-    assert noise.shape == x_start.shape
+      #noise = tf.random_normal(shape=x_start.shape)
+      noise = tf.random_normal(shape=shape)
+    assert noise.shape == shape
     return (
-        self._extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start +
-        self._extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
+        self._extract(self.sqrt_alphas_cumprod, t, shape) * x_start +
+        self._extract(self.sqrt_one_minus_alphas_cumprod, t, shape) * noise
     )
 
   def q_posterior_mean_variance(self, x_start, x_t, t):
@@ -345,3 +347,54 @@ class GaussianDiffusion2:
     total_bpd_b = tf.reduce_sum(terms_bpd_bt, axis=1) + prior_bpd_b
     assert terms_bpd_bt.shape == mse_bt.shape == [B, T] and total_bpd_b.shape == prior_bpd_b.shape == [B]
     return total_bpd_b, terms_bpd_bt, prior_bpd_b, mse_bt
+
+  def interpolate(self, denoise_fn, *, shape, noise_fn=tf.random_normal, x1, x2, lam, t):
+    """
+    Interpolate between images.
+    t == 0 means diffuse images for 1 timestep before mixing.
+    """
+    assert isinstance(shape, (tuple, list))
+
+    # Placeholders for real samples to interpolate
+    #x1 = tf.placeholder(tf.float32, shape)
+    #x2 = tf.placeholder(tf.float32, shape)
+    # lam == 0.5 averages diffused images.
+    #lam = tf.placeholder(tf.float32, shape=())
+    #t = tf.placeholder(tf.int32, shape=())
+
+    #x1 = tf.io.decode_image(tf.io.read_file('gs://tensorfork-arfa-euw4/ponies/999715.png.0.100.jpg'), channels=3)
+    #x2 = tf.io.decode_image(tf.io.read_file('gs://tensorfork-arfa-euw4/ponies/999998.jpg.0.94.jpg'), channels=3)
+    #x1 = tf.cast(x1, tf.float32)/255.0
+    #x1 = tf.image.resize_image_with_pad(x1, target_height=256, target_width=256, method=tf.image.ResizeMethod.AREA)
+    #x2 = tf.cast(x2, tf.float32)/255.0
+    #x2 = tf.image.resize_image_with_pad(x2, target_height=256, target_width=256, method=tf.image.ResizeMethod.AREA)
+
+    # Add noise via forward diffusion
+    # TODO: use the same noise for both endpoints?
+    # t_batched = tf.constant([t] * x1.shape[0], dtype=tf.int32)
+    t_batched = tf.stack([t] * x1.shape[0])
+    xt1 = self.q_sample(x1, t=t_batched)
+    xt2 = self.q_sample(x2, t=t_batched)
+
+    # Mix latents
+    # Linear interpolation
+    xt_interp = (1 - lam) * xt1 + lam * xt2
+    assert xt_interp.shape == xt1.shape
+    # Constant variance interpolation
+    # xt_interp = tf.sqrt(1 - lam * lam) * xt1 + lam * xt2
+
+    # Reverse diffusion (similar to self.p_sample_loop)
+    #t = tf.constant(500, dtype=tf.int32)
+    _, x_interp = tf.while_loop(
+      cond=lambda i_, _: tf.greater_equal(i_, 0),
+      body=lambda i_, img_: [
+        i_ - 1,
+        self.p_sample(denoise_fn=denoise_fn, x=img_, t=tf.fill([shape[0]], i_), noise_fn=noise_fn, clip_denoised=True, return_pred_xstart=False)
+      ],
+      loop_vars=[t, xt_interp],
+      shape_invariants=[t.shape, xt_interp.shape],
+      back_prop=False
+    )
+    #assert x_interp.shape == shape
+
+    return x1, x2, lam, x_interp, t

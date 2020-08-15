@@ -45,7 +45,7 @@ class Model(tpu_utils.Model):
     B, H, W, C = x.shape.as_list()
     assert x.dtype == tf.float32
     assert t.shape == [B] and t.dtype in [tf.int32, tf.int64]
-    assert y.shape == [B] and y.dtype in [tf.int32, tf.int64]
+    #assert y.shape == [B] and y.dtype in [tf.int32, tf.int64]
     orig_out_ch = out_ch = C
 
     if self.block_size != 1:
@@ -85,6 +85,7 @@ class Model(tpu_utils.Model):
         noise_fn=tf.random_normal
       )
     }
+
   def progressive_samples_fn(self, dummy_noise, y):
     samples, progressive_samples = self.diffusion.p_sample_loop_progressive(
       denoise_fn=functools.partial(self._denoise, y=y, dropout=0),
@@ -92,6 +93,28 @@ class Model(tpu_utils.Model):
       noise_fn=tf.random_normal
     )
     return {'samples': samples, 'progressive_samples': progressive_samples}
+
+  def interpolate_fn(self, dummy_noise, y, x1, x2, lam=0.5, t=500):
+    interps = []
+    for l in np.arange(0, 1.0, 0.1):
+        x1, x2, lam, x_interp, t = self.diffusion.interpolate(
+          denoise_fn=functools.partial(self._denoise, y=y, dropout=0),
+          shape=x1.shape.as_list(),
+          noise_fn=tf.random_normal,
+          x1=x1, x2=x2, lam=tf.convert_to_tensor(l, dtype=tf.float32), t=tf.convert_to_tensor(t)
+        )
+        interps.append(x_interp)
+    return {
+      'interps': interps
+      }
+    #return {
+      #'x1': x1,    # placeholder
+      #'x2': x2,    # placeholder
+      #'lam': lam,  # placeholder
+      #'t': t,      # placeholder
+      #'x_interp': x_interp
+    #}
+
 
 def _load_model(kwargs, ds):
   return Model(
@@ -116,6 +139,8 @@ def simple_eval(model_dir, tpu_name, bucket_name_prefix, mode, load_ckpt=None, t
       kwargs['num_diffusion_timesteps'] = int(os.environ['NUM_DIFFUSION_TIMESTEPS'])
   if 'BETA_SCHEDULE' in os.environ:
       kwargs['beta_schedule'] = os.environ['BETA_SCHEDULE']
+  if 'BETA_END' in os.environ:
+      kwargs['beta_end'] = float(os.environ['BETA_END'])
 
   print('loaded kwargs:', kwargs)
   ds = datasets.get_dataset(kwargs['dataset'], tfr_file=tfr_file)
